@@ -14,13 +14,16 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from config import APP_NAME, APP_VERSION, HUB_DIR
+from config import APP_NAME, APP_VERSION, GITHUB_TOKEN, HUB_DIR
 
 GITHUB_OWNER = "xiaumeiner"
 GITHUB_REPO = "God-Peace"
 RELEASES_URL = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
 RELEASE_BROWSER_URL = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
-HEADERS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+API_HEADERS = {
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+}
 
 
 def _parse_version(tag: str) -> tuple[int, ...]:
@@ -39,10 +42,20 @@ def _current_version() -> tuple[int, ...]:
     return _parse_version(APP_VERSION)
 
 
+def _request_headers(*, for_download: bool = False) -> dict[str, str]:
+    headers = dict(API_HEADERS)
+    headers["User-Agent"] = f"{APP_NAME}/{APP_VERSION}"
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    if for_download:
+        headers["Accept"] = "application/octet-stream"
+    return headers
+
+
 def check_for_update(timeout: int = 15) -> dict[str, Any] | None:
     """Return release info if newer version exists, else None."""
     try:
-        req = urllib.request.Request(RELEASES_URL, headers=HEADERS)
+        req = urllib.request.Request(RELEASES_URL, headers=_request_headers())
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
     except Exception:
@@ -55,50 +68,49 @@ def check_for_update(timeout: int = 15) -> dict[str, Any] | None:
 
     assets = data.get("assets") or []
     download_url = ""
+    asset_id: int | None = None
     for asset in assets:
         name = asset.get("name", "").lower()
         if name.endswith(".zip") and "godpeace" in name:
             download_url = asset.get("browser_download_url", "")
+            asset_id = asset.get("id")
             break
     if not download_url and assets:
         download_url = assets[0].get("browser_download_url", "")
+        asset_id = assets[0].get("id")
 
     return {
         "version": tag.lstrip("vV"),
         "tag": tag,
         "notes": data.get("body", ""),
         "download_url": download_url,
+        "asset_id": asset_id,
         "browser_url": data.get("html_url") or RELEASE_BROWSER_URL,
     }
 
 
 def download_update(release_info: dict[str, Any], dest_dir: Path | None = None, timeout: int = 120) -> Path | None:
     """Download zip asset to dest_dir and return zip path."""
-    url = release_info.get("download_url") or ""
-    if not url:
-        return None
+    asset_id = release_info.get("asset_id")
+    if GITHUB_TOKEN and asset_id:
+        url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/assets/{asset_id}"
+        headers = _request_headers(for_download=True)
+    else:
+        url = release_info.get("download_url") or ""
+        if not url:
+            return None
+        headers = {"User-Agent": f"{APP_NAME}/{APP_VERSION}"}
+
     dest_dir = dest_dir or Path(tempfile.gettempdir())
     dest_dir.mkdir(parents=True, exist_ok=True)
     zip_path = dest_dir / "GodPeace_update.zip"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": f"{APP_NAME}/{APP_VERSION}"})
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as resp, zip_path.open("wb") as f:
             shutil.copyfileobj(resp, f)
         return zip_path
     except Exception:
         return None
-
-
-def _wait_unlock(path: Path, timeout: int = 30) -> bool:
-    """Wait until a file is no longer locked by another process."""
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            with path.open("a+b"):
-                return True
-        except PermissionError:
-            time.sleep(0.5)
-    return False
 
 
 def apply_update(zip_path: Path, target_dir: Path) -> tuple[bool, str]:
@@ -113,7 +125,6 @@ def apply_update(zip_path: Path, target_dir: Path) -> tuple[bool, str]:
     except Exception as exc:
         return False, f"Ошибка распаковки: {exc}"
 
-    # Find the actual application folder inside the archive.
     candidates = [p for p in extract_dir.iterdir() if p.is_dir()]
     source_dir = extract_dir
     for cand in candidates:
@@ -138,7 +149,6 @@ start "" "{exe_path}"
 """
     updater_bat.write_text(bat_content, encoding="utf-8")
 
-    # Spawn the updater and exit.
     subprocess.Popen([str(updater_bat)], shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
     sys.exit(0)
 

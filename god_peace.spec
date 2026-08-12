@@ -51,6 +51,7 @@ a = Analysis(
         "tweaks.catalog",
         "tweaks.catalog_loader",
         "engine_legacy",
+        "updater",
     ],
     hookspath=[],
     hooksconfig={},

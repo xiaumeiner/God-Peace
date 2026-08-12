@@ -4,6 +4,7 @@ capt_watch_state.json
 god_peace_state.json
 build/
 dist/
+.venv/
 __pycache__/
 *.pyc
 *.pyo

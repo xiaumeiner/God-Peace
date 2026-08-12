@@ -68,3 +68,6 @@ MAJESTIC_LANGUAGE = os.getenv("MAJESTIC_LANGUAGE", "ru")
 MAJESTIC_POLL_SECONDS = max(60, int(os.getenv("MAJESTIC_POLL_SECONDS", "60") or "60"))
 
 MAJESTIC_SERVERS = [f"RU{i}" for i in range(1, 20)]
+
+# GitHub Releases — нужен для private repo (scope: repo или public_repo)
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "") or os.getenv("GOD_PEACE_GITHUB_TOKEN", "")
