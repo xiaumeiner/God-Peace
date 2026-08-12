@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import ctypes
 import os
+import sys
 import threading
 import tkinter.messagebox as messagebox
 import webbrowser
+from pathlib import Path
 from typing import Any
 
 import customtkinter as ctk
@@ -18,18 +21,21 @@ from calamity_runner import (
     relaunch_as_admin,
     run_optimization,
 )
-from capt_notifier import notify_capt
 from capt_popup import show_capt_popup
 from capt_watcher import CaptWatcher
 from config import (
     APP_NAME,
+    APP_VERSION,
     ASSETS_DIR,
     BUNDLED_DIR,
     DISCORD_DEVELOPER,
     DISCORD_XGOD_URL,
+    HUB_DIR,
     MAJESTIC_FAMILY_NAME,
     MAJESTIC_SERVER_ID,
+    MAJESTIC_SERVERS,
 )
+from core.registry import RegistryBackup
 from family_registry import refresh_registry
 from gif_banner import GifBanner
 from hub_state import record_optimization
@@ -39,6 +45,7 @@ from mapmark_launcher import run_mapmark
 from single_instance import start_activation_server
 from system_status import format_status_line, invalidate_static_cache
 from tray_icon import TrayIcon
+from updater import check_for_update, download_update, apply_update, open_release_page
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
@@ -54,6 +61,11 @@ ACCENT_HOVER = "#96281b"
 SUCCESS = "#27ae60"
 WARNING = "#d4a017"
 
+HOTKEY_ID = 1
+MOD_CTRL = 0x0002
+MOD_ALT = 0x0001
+VK_G = 0x47
+
 
 class HubApp(ctk.CTk):
     def __init__(self) -> None:
@@ -68,6 +80,9 @@ class HubApp(ctk.CTk):
         self._tray: TrayIcon | None = None
         self._capt_watcher: CaptWatcher | None = None
         self._ipc_stop = None
+        self._hotkey_thread: threading.Thread | None = None
+        self._hotkey_stop = threading.Event()
+        self._update_info: dict | None = None
 
         self._apply_window_icon()
         self._ipc_stop, _ = start_activation_server(self._show_window)
@@ -75,10 +90,12 @@ class HubApp(ctk.CTk):
         self._build_ui()
         self._start_tray()
         self._start_capt_watcher()
+        self._start_hotkey()
 
         self.bind("<FocusIn>", lambda _e: self._refresh_dynamic_ui())
         self.after(200, self._refresh_dynamic_ui)
         self.after(1000, self._tick_system_status)
+        self.after(3000, self._check_update_silent)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _apply_window_icon(self) -> None:
@@ -132,6 +149,7 @@ class HubApp(ctk.CTk):
         if self._quitting:
             return
         self._quitting = True
+        self._hotkey_stop.set()
         if self._ipc_stop:
             self._ipc_stop.set()
         if self._capt_watcher:
@@ -159,6 +177,8 @@ class HubApp(ctk.CTk):
         self._build_optimization_card(scroll)
         self._build_mapmark_card(scroll)
         self._build_majestic_card(scroll)
+        self._build_backup_card(scroll)
+        self._build_update_card(scroll)
         self._build_extra_tools_card(scroll)
         self._build_footer(scroll)
 
@@ -302,23 +322,15 @@ class HubApp(ctk.CTk):
         card = self._card(parent, 4)
         inner = ctk.CTkFrame(card, fg_color="transparent")
         inner.grid(row=0, column=0, sticky="ew", padx=16, pady=14)
-        inner.grid_columnconfigure(0, weight=1)
+        inner.grid_columnconfigure((0, 1), weight=1)
 
         ctk.CTkLabel(
             inner,
-            text=f"Капты · {MAJESTIC_FAMILY_NAME}",
+            text="Капты Majestic",
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=TEXT,
             anchor="w",
-        ).grid(row=0, column=0, sticky="w")
-
-        ctk.CTkLabel(
-            inner,
-            text=f"{MAJESTIC_SERVER_ID} · уведомление, если на нас напали",
-            font=ctk.CTkFont(size=11),
-            text_color=MUTED,
-            anchor="w",
-        ).grid(row=1, column=0, sticky="w", pady=(2, 0))
+        ).grid(row=0, column=0, columnspan=2, sticky="w")
 
         self._capt_status = ctk.CTkLabel(
             inner,
@@ -327,7 +339,72 @@ class HubApp(ctk.CTk):
             text_color=MUTED,
             anchor="w",
         )
-        self._capt_status.grid(row=2, column=0, sticky="w", pady=(8, 0))
+        self._capt_status.grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+
+        row = 2
+        ctk.CTkLabel(inner, text="Сервер", font=ctk.CTkFont(size=11), text_color=MUTED, anchor="w").grid(
+            row=row, column=0, sticky="w", pady=(10, 0)
+        )
+        ctk.CTkLabel(inner, text="Семья", font=ctk.CTkFont(size=11), text_color=MUTED, anchor="w").grid(
+            row=row, column=1, sticky="w", padx=(8, 0), pady=(10, 0)
+        )
+
+        self._server_var = ctk.StringVar(value=MAJESTIC_SERVER_ID)
+        server_menu = ctk.CTkOptionMenu(
+            inner,
+            variable=self._server_var,
+            values=MAJESTIC_SERVERS,
+            width=90,
+            fg_color=BG,
+            button_color=BORDER,
+            button_hover_color=ACCENT,
+            text_color=TEXT,
+            font=ctk.CTkFont(size=12),
+        )
+        server_menu.grid(row=row + 1, column=0, sticky="w")
+
+        self._family_var = ctk.StringVar(value=MAJESTIC_FAMILY_NAME)
+        family_entry = ctk.CTkEntry(
+            inner,
+            textvariable=self._family_var,
+            placeholder_text="Spartan",
+            width=120,
+            height=30,
+            fg_color=BG,
+            border_color=BORDER,
+            text_color=TEXT,
+            font=ctk.CTkFont(size=12),
+        )
+        family_entry.grid(row=row + 1, column=1, sticky="w", padx=(8, 0))
+
+        self._watcher_enabled = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(
+            inner,
+            text="Мониторинг вкл",
+            variable=self._watcher_enabled,
+            command=self._on_watcher_toggle,
+            checkbox_width=18,
+            checkbox_height=18,
+            fg_color=ACCENT,
+            hover_color=ACCENT_HOVER,
+            border_color=BORDER,
+            text_color=TEXT,
+            font=ctk.CTkFont(size=11),
+        ).grid(row=row + 2, column=0, sticky="w", pady=(10, 0))
+
+        ctk.CTkButton(
+            inner,
+            text="Опросить",
+            width=90,
+            height=26,
+            fg_color=CARD,
+            hover_color=CARD_HOVER,
+            border_width=1,
+            border_color=BORDER,
+            text_color=TEXT,
+            font=ctk.CTkFont(size=11),
+            command=self._on_poll_now,
+        ).grid(row=row + 2, column=1, sticky="w", padx=(8, 0), pady=(10, 0))
 
         self._api_key_var = ctk.StringVar(value=os.environ.get("MAJESTIC_API_KEY", ""))
         entry = ctk.CTkEntry(
@@ -341,12 +418,13 @@ class HubApp(ctk.CTk):
             text_color=TEXT,
             font=ctk.CTkFont(size=11),
         )
-        entry.grid(row=3, column=0, sticky="ew", pady=(10, 0))
+        entry.grid(row=row + 3, column=0, columnspan=2, sticky="ew", pady=(10, 0))
 
         btn_frame = ctk.CTkFrame(inner, fg_color="transparent")
-        btn_frame.grid(row=4, column=0, sticky="ew", pady=(8, 0))
+        btn_frame.grid(row=row + 4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         btn_frame.grid_columnconfigure(0, weight=1)
         btn_frame.grid_columnconfigure(1, weight=1)
+        btn_frame.grid_columnconfigure(2, weight=1)
 
         ctk.CTkButton(
             btn_frame,
@@ -370,10 +448,94 @@ class HubApp(ctk.CTk):
             text_color="#fff",
             font=ctk.CTkFont(size=11, weight="bold"),
             command=self._on_save_key,
-        ).grid(row=0, column=1, sticky="ew", padx=(4, 0))
+        ).grid(row=0, column=1, sticky="ew", padx=(0, 4))
+
+        ctk.CTkButton(
+            btn_frame,
+            text="Тест",
+            height=28,
+            fg_color=CARD,
+            hover_color=CARD_HOVER,
+            border_width=1,
+            border_color=BORDER,
+            text_color=TEXT,
+            font=ctk.CTkFont(size=11),
+            command=self._on_test_capt,
+        ).grid(row=0, column=2, sticky="ew", padx=(4, 0))
+
+    def _build_backup_card(self, parent: ctk.CTkScrollableFrame) -> None:
+        card = self._card(parent, 5)
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.grid(row=0, column=0, sticky="ew", padx=16, pady=14)
+        inner.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            inner,
+            text="Бэкап реестра",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=TEXT,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w")
+
+        self._backup_count = ctk.CTkLabel(
+            inner,
+            text="",
+            font=ctk.CTkFont(size=11),
+            text_color=MUTED,
+            anchor="w",
+        )
+        self._backup_count.grid(row=1, column=0, sticky="w", pady=(2, 0))
+
+        ctk.CTkButton(
+            inner,
+            text="Создать точку восстановления",
+            height=30,
+            fg_color=ACCENT,
+            hover_color=ACCENT_HOVER,
+            text_color="#fff",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=self._on_backup_registry,
+        ).grid(row=2, column=0, sticky="ew", pady=(12, 0))
+
+    def _build_update_card(self, parent: ctk.CTkScrollableFrame) -> None:
+        card = self._card(parent, 6)
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.grid(row=0, column=0, sticky="ew", padx=16, pady=14)
+        inner.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            inner,
+            text="Обновление",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=TEXT,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w")
+
+        self._update_status = ctk.CTkLabel(
+            inner,
+            text=f"версия {APP_VERSION}",
+            font=ctk.CTkFont(size=11),
+            text_color=MUTED,
+            anchor="w",
+        )
+        self._update_status.grid(row=1, column=0, sticky="w", pady=(2, 0))
+
+        self._update_btn = ctk.CTkButton(
+            inner,
+            text="Проверить обновления",
+            height=30,
+            fg_color=CARD,
+            hover_color=CARD_HOVER,
+            border_width=1,
+            border_color=BORDER,
+            text_color=TEXT,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=self._on_check_update,
+        )
+        self._update_btn.grid(row=2, column=0, sticky="ew", pady=(12, 0))
 
     def _build_extra_tools_card(self, parent: ctk.CTkScrollableFrame) -> None:
-        card = self._card(parent, 5)
+        card = self._card(parent, 7)
         inner = ctk.CTkFrame(card, fg_color="transparent")
         inner.grid(row=0, column=0, sticky="ew", padx=16, pady=14)
         inner.grid_columnconfigure(0, weight=1)
@@ -449,20 +611,50 @@ class HubApp(ctk.CTk):
             on_error=lambda text: self.after(0, lambda: self._set_capt_status(f"ошибка · {text}", error=True)),
             on_notify_ui=self._capt_notify_fallback,
             show_popup=self._deliver_capt_popup,
+            family=MAJESTIC_FAMILY_NAME,
+            server_id=MAJESTIC_SERVER_ID,
         )
         self._capt_watcher.start()
+        self.after(200, self._refresh_backup_count)
 
     def _set_capt_status(self, text: str, *, error: bool = False) -> None:
         if not self._capt_status:
             return
         prefix = "CAPT ERR" if error else "CAPT"
         self._capt_status.configure(text=f"{prefix} · {text}", text_color=ACCENT if error else MUTED)
+        if error:
+            self._set_status(f"Majestic: {text}", ACCENT)
+
+    def _start_hotkey(self) -> None:
+        if sys.platform != "win32":
+            return
+        self._hotkey_thread = threading.Thread(target=self._hotkey_loop, name="hotkey", daemon=True)
+        self._hotkey_thread.start()
+
+    def _hotkey_loop(self) -> None:
+        try:
+            user32 = ctypes.windll.user32
+            if not user32.RegisterHotKey(None, HOTKEY_ID, MOD_CTRL | MOD_ALT, VK_G):
+                return
+            msg = ctypes.wintypes.MSG()
+            while not self._hotkey_stop.is_set():
+                if user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):
+                    if msg.message == 0x0312 and msg.wParam == HOTKEY_ID:
+                        self._show_window()
+                    user32.TranslateMessage(ctypes.byref(msg))
+                    user32.DispatchMessageW(ctypes.byref(msg))
+                self._hotkey_stop.wait(0.05)
+        finally:
+            try:
+                user32.UnregisterHotKey(None, HOTKEY_ID)
+            except Exception:
+                pass
 
     def _capt_notify_fallback(self, title: str, message: str) -> None:
         self.after(0, lambda: messagebox.showinfo(title, message))
 
     def _deliver_capt_popup(self, event: CaptEvent) -> None:
-        self.after(0, lambda e=event: show_capt_popup(self, e, server_id=MAJESTIC_SERVER_ID))
+        self.after(0, lambda e=event: show_capt_popup(self, e, server_id=self._server_var.get()))
 
     def _on_run_optimization(self) -> None:
         if self._busy:
@@ -545,30 +737,147 @@ class HubApp(ctk.CTk):
         except Exception as exc:
             self._set_status(f"Ошибка копирования: {exc}", ACCENT)
 
+    def _env_path(self) -> Path:
+        frozen_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else None
+        if frozen_dir and (frozen_dir / "majestic.env").is_file():
+            return frozen_dir / "majestic.env"
+        return HUB_DIR / "majestic.env"
+
+    def _write_env_value(self, key: str, value: str) -> None:
+        env_path = self._env_path()
+        lines: list[str] = []
+        if env_path.is_file():
+            lines = env_path.read_text(encoding="utf-8").splitlines()
+        updated = False
+        for i, line in enumerate(lines):
+            if line.startswith(f"{key}="):
+                lines[i] = f"{key}={value}"
+                updated = True
+                break
+        if not updated:
+            lines.append(f"{key}={value}")
+        env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
     def _on_save_key(self) -> None:
         key = self._api_key_var.get().strip()
         if not key:
             messagebox.showwarning(APP_NAME, "Введите API-ключ")
             return
-        env_path = Path(os.path.dirname(os.path.abspath(__file__))) / "majestic.env"
         try:
-            lines = []
-            if env_path.is_file():
-                lines = env_path.read_text(encoding="utf-8").splitlines()
-            updated = False
-            for i, line in enumerate(lines):
-                if line.startswith("MAJESTIC_API_KEY="):
-                    lines[i] = f"MAJESTIC_API_KEY={key}"
-                    updated = True
-                    break
-            if not updated:
-                lines.append(f"MAJESTIC_API_KEY={key}")
-            env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            self._write_env_value("MAJESTIC_API_KEY", key)
             os.environ["MAJESTIC_API_KEY"] = key
-            messagebox.showinfo(APP_NAME, "Ключ сохранён. Перезапусти приложение.")
-            self._set_status("Ключ сохранён", SUCCESS)
+            self._write_env_value("MAJESTIC_SERVER_ID", self._server_var.get())
+            os.environ["MAJESTIC_SERVER_ID"] = self._server_var.get()
+            self._write_env_value("MAJESTIC_FAMILY_NAME", self._family_var.get())
+            os.environ["MAJESTIC_FAMILY_NAME"] = self._family_var.get()
+            if self._capt_watcher:
+                self._capt_watcher.update_config(
+                    family=self._family_var.get(),
+                    server_id=self._server_var.get(),
+                )
+            messagebox.showinfo(APP_NAME, "Настройки Majestic сохранены.\nКлюч и семья применены.")
+            self._set_status("Majestic · настройки сохранены", SUCCESS)
         except Exception as exc:
             messagebox.showerror(APP_NAME, f"Ошибка сохранения: {exc}")
+
+    def _on_watcher_toggle(self) -> None:
+        if self._capt_watcher:
+            self._capt_watcher.enabled = self._watcher_enabled.get()
+
+    def _on_poll_now(self) -> None:
+        if not self._capt_watcher:
+            return
+        self._set_status("Majestic · опрос...")
+
+        def work() -> None:
+            try:
+                events = self._capt_watcher.poll_now()
+                self._set_status_async(f"Majestic · опрошено, новых {len(events)}", SUCCESS)
+            except Exception as exc:
+                self._set_status_async(f"Majestic · {exc}", ACCENT)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_test_capt(self) -> None:
+        fam = self._family_var.get()
+        event = make_test_event("attack", family=fam)
+        show_capt_popup(self, event, server_id=self._server_var.get())
+
+    def _on_backup_registry(self) -> None:
+        try:
+            path = RegistryBackup.backup("HKCU", "Software")
+            RegistryBackup.backup("HKLM", r"SYSTEM\CurrentControlSet\Services")
+            self._refresh_backup_count()
+            self._set_status(f"Бэкап создан: {path.name}", SUCCESS)
+        except Exception as exc:
+            self._set_status(f"Ошибка бэкапа: {exc}", ACCENT)
+
+    def _refresh_backup_count(self) -> None:
+        try:
+            count = len(RegistryBackup.list_backups())
+            self._backup_count.configure(text=f"доступно бэкапов: {count}")
+        except Exception:
+            self._backup_count.configure(text="бэкапы: —")
+
+    def _check_update_silent(self) -> None:
+        def work() -> None:
+            try:
+                info = check_for_update(APP_VERSION)
+                self._update_info = info
+                if info:
+                    tag = info.get("tag_name", "?")
+                    self.after(0, lambda: self._update_status.configure(
+                        text=f"доступно обновление {tag}", text_color=ACCENT
+                    ))
+                    self.after(0, lambda: self._update_btn.configure(text="Скачать обновление"))
+            except Exception:
+                pass
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_check_update(self) -> None:
+        if self._update_info:
+            self._download_update()
+            return
+        self._set_status("Проверка обновлений...")
+
+        def work() -> None:
+            try:
+                info = check_for_update(APP_VERSION)
+                self._update_info = info
+                if not info:
+                    self._set_status_async("Обновлений нет", SUCCESS)
+                    return
+                tag = info.get("tag_name", "?")
+                self.after(0, lambda: self._update_status.configure(
+                    text=f"доступно обновление {tag}", text_color=ACCENT
+                ))
+                self.after(0, lambda: self._update_btn.configure(text="Скачать обновление"))
+                self._set_status_async(f"Доступно обновление {tag}", WARNING)
+            except Exception as exc:
+                self._set_status_async(f"Ошибка проверки: {exc}", ACCENT)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _download_update(self) -> None:
+        if not self._update_info:
+            return
+        self._set_status("Скачивание обновления...")
+
+        def work() -> None:
+            try:
+                zip_path = download_update(self._update_info, HUB_DIR)
+                if not zip_path:
+                    self._set_status_async("Не удалось скачать обновление", ACCENT)
+                    return
+                target = HUB_DIR
+                ok, msg = apply_update(zip_path, target)
+                self._set_status_async(msg, SUCCESS if ok else ACCENT)
+                if ok:
+                    messagebox.showinfo(APP_NAME, "Обновление применено. Перезапусти приложение.")
+            except Exception as exc:
+                self._set_status_async(f"Ошибка обновления: {exc}", ACCENT)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _require_admin(self) -> bool:
         if is_admin():

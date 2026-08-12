@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from capt_notifier import notify_capt
-from config import CAPT_STATE_FILE, MAJESTIC_FAMILY_NAME, MAJESTIC_POLL_SECONDS, MAJESTIC_SERVER_ID
+from config import CAPT_STATE_FILE, MAJESTIC_POLL_SECONDS
 from family_registry import refresh_registry
 from majestic_api import MajesticApiError, MajesticRateLimitError
 from majestic_captures import CaptEvent, fetch_family_wars, filter_family_captures
@@ -22,11 +22,15 @@ class CaptWatcher:
         on_error: Callable[[str], None] | None = None,
         on_notify_ui: Callable[[str, str], None] | None = None,
         show_popup: Callable[[CaptEvent], None] | None = None,
+        family: str = "Alarm",
+        server_id: str = "RU18",
     ) -> None:
         self._on_status = on_status
         self._on_error = on_error
         self._on_notify_ui = on_notify_ui
         self._show_popup = show_popup
+        self._family = family
+        self._server_id = server_id
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._enabled = True
@@ -53,6 +57,12 @@ class CaptWatcher:
     def poll_now(self) -> list[CaptEvent]:
         return self._poll_once(notify_new=True)
 
+    def update_config(self, *, family: str | None = None, server_id: str | None = None) -> None:
+        if family is not None:
+            self._family = family
+        if server_id is not None:
+            self._server_id = server_id
+
     def _loop(self) -> None:
         time.sleep(3)
         try:
@@ -73,9 +83,9 @@ class CaptWatcher:
                 self._emit_error(str(exc))
 
     def _poll_once(self, *, notify_new: bool) -> list[CaptEvent]:
-        refresh_registry()
-        captures = fetch_family_wars()
-        events = filter_family_captures(captures)
+        refresh_registry(self._server_id)
+        captures = fetch_family_wars(self._server_id)
+        events = filter_family_captures(captures, self._family)
         state = _load_state()
         seen: set[int] = set(state.get("seen_ids") or [])
         initialized = bool(state.get("initialized"))
@@ -104,13 +114,14 @@ class CaptWatcher:
                 )
 
         ts = datetime.now().strftime("%H:%M")
-        fam = MAJESTIC_FAMILY_NAME
+        fam = self._family
+        sid = self._server_id
         if not initialized:
-            self._emit_status(f"база {len(seen)} каптов · {fam} · {ts}")
+            self._emit_status(f"база {len(seen)} каптов · {fam}@{sid} · {ts}")
         elif new_events and notify_new:
-            self._emit_status(f"новых: {len(new_events)} · {fam} · {ts}")
+            self._emit_status(f"новых: {len(new_events)} · {fam}@{sid} · {ts}")
         else:
-            self._emit_status(f"ок · {len(events)} в истории · {fam} · {ts}")
+            self._emit_status(f"ок · {len(events)} в истории · {fam}@{sid} · {ts}")
 
         return new_events
 

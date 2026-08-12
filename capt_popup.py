@@ -281,7 +281,7 @@ class CaptPopup(ctk.CTkToplevel):
         col.pack(padx=8, pady=10)
 
         ring = self._accent if highlight else None
-        avatar = load_family_avatar(side, size=50, ring_color=ring)
+        avatar = load_family_avatar(side, size=50, ring_color=ring, server_id=self._server_id)
         ctk.CTkLabel(col, text="", image=self._ctk_image(avatar, 50)).pack()
 
         ctk.CTkLabel(

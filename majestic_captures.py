@@ -128,11 +128,11 @@ def filter_family_captures(
     return out
 
 
-def make_test_event(side: str) -> CaptEvent:
-    fam = MAJESTIC_FAMILY_NAME
+def make_test_event(side: str, family: str | None = None) -> CaptEvent:
+    fam = family or MAJESTIC_FAMILY_NAME
     alarm = lookup_side(family_id=None, name=fam)
     if alarm.name == "—":
-        alarm = FamilySide(family_id=None, name=fam, tag="ALRM", color="#c0392b", has_logo=False)
+        alarm = FamilySide(family_id=None, name=fam, tag=fam[:4].upper(), color="#c0392b", has_logo=False)
     spartan = lookup_side(family_id=730, name="SPARTAN")
     thugger = lookup_side(family_id=5, name="THUGGER")
 

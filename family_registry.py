@@ -9,7 +9,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from config import HUB_DIR, MAJESTIC_API_BASE, MAJESTIC_API_KEY, MAJESTIC_LANGUAGE, MAJESTIC_SERVER_ID
+from config import HUB_DIR, MAJESTIC_API_BASE, MAJESTIC_API_KEY, MAJESTIC_LANGUAGE
 from majestic_api import majestic_request
 
 LOGO_CACHE_DIR = HUB_DIR / "cache" / "family_logos"
@@ -114,14 +114,14 @@ def lookup_side(
     )
 
 
-def _logo_cache_path(family_id: int, ext: str = "png") -> Path:
-    return LOGO_CACHE_DIR / f"{MAJESTIC_SERVER_ID}_{family_id}.{ext}"
+def _logo_cache_path(family_id: int, server_id: str, ext: str = "png") -> Path:
+    return LOGO_CACHE_DIR / f"{server_id}_{family_id}.{ext}"
 
 
-def _download_logo(family_id: int, ext: str = "png") -> Path | None:
+def _download_logo(family_id: int, server_id: str, ext: str = "png") -> Path | None:
     if family_id in _logo_miss:
         return None
-    cache = _logo_cache_path(family_id, ext)
+    cache = _logo_cache_path(family_id, server_id, ext)
     if cache.is_file() and cache.stat().st_size > 0:
         return cache
 
@@ -131,7 +131,7 @@ def _download_logo(family_id: int, ext: str = "png") -> Path | None:
         "User-Agent": "GodPeace/1.0",
     }
     for tmpl in _LOGO_URL_TEMPLATES:
-        url = tmpl.format(base=MAJESTIC_API_BASE.rstrip("/"), server=MAJESTIC_SERVER_ID, fid=family_id, ext=ext)
+        url = tmpl.format(base=MAJESTIC_API_BASE.rstrip("/"), server=server_id, fid=family_id, ext=ext)
         try:
             req = urllib.request.Request(url, headers=headers, method="GET")
             with urllib.request.urlopen(req, timeout=12) as resp:
@@ -146,9 +146,9 @@ def _download_logo(family_id: int, ext: str = "png") -> Path | None:
     return None
 
 
-def load_family_avatar(side: FamilySide, size: int = 40, *, ring_color: str | None = None):
+def load_family_avatar(side: FamilySide, size: int = 40, *, ring_color: str | None = None, server_id: str | None = None):
     """Return PIL Image RGBA — круглый аватар, опционально кольцо."""
-    key = (side.family_id, side.name, side.color, side.has_logo, size, ring_color)
+    key = (side.family_id, side.name, side.color, side.has_logo, size, ring_color, server_id)
     cached = _avatar_cache.get(key)
     if cached is not None:
         return cached
@@ -160,7 +160,7 @@ def load_family_avatar(side: FamilySide, size: int = 40, *, ring_color: str | No
     painted = False
 
     if side.family_id is not None and side.has_logo:
-        path = _download_logo(side.family_id)
+        path = _download_logo(side.family_id, server_id or "RU18")
         if path and path.is_file():
             try:
                 raw = Image.open(path).convert("RGBA").resize((inner, inner), Image.LANCZOS)
