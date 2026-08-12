@@ -69,5 +69,6 @@ MAJESTIC_POLL_SECONDS = max(60, int(os.getenv("MAJESTIC_POLL_SECONDS", "60") or 
 
 MAJESTIC_SERVERS = [f"RU{i}" for i in range(1, 20)]
 
-# GitHub Releases — нужен для private repo (scope: repo или public_repo)
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "") or os.getenv("GOD_PEACE_GITHUB_TOKEN", "")
+# GitHub Releases — public repo, автообновление без токена
+GITHUB_RELEASE_OWNER = os.getenv("GITHUB_RELEASE_OWNER", "xiaumeiner")
+GITHUB_RELEASE_REPO = os.getenv("GITHUB_RELEASE_REPO", "God-Peace")

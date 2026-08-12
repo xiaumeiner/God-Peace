@@ -4,14 +4,18 @@
 
 ## Где исходники
 
-**Корень проекта:** `C:\Users\xiaumeiner\Projects\my-ai`
+**Корень проекта (локально):** `C:\Users\xiaumeiner\Projects\my-ai`
 
-**God Peace (основное приложение):** `my-ai/hub/`
+**God Peace (исходники):** `my-ai/hub/`
+
+**GitHub (только hub/ в корне репо):** https://github.com/xiaumeiner/God-Peace
 
 | Что | Путь |
 |-----|------|
 | Точка входа | `hub/run.py` |
 | GUI, логика хаба | `hub/app.py` |
+| Автообновление | `hub/updater.py` |
+| Push на GitHub | `hub/push_github.ps1` |
 | Пути, константы, env | `hub/config.py` |
 | Сборка exe | `hub/build.ps1`, `hub/build_bundle.ps1`, `hub/god_peace.spec` |
 | Готовый билд | `hub/dist/GodPeace/GodPeace.exe` |
@@ -133,9 +137,12 @@ DANGER=#c0392b  WARNING=#d4a017 (атака)
 
 ---
 
-## Git / коммиты
+## Git / GitHub
 
-- Коммиты **только по явной просьбе** пользователя
+- Репозиторий: `xiaumeiner/God-Peace` (public)
+- Автообновление: Releases в том же репо, токен не нужен
+- Push исходников: `.\hub\push_github.ps1`
+- Публикация zip: `.\hub\publish_release.ps1 -Version X.Y.Z`
 - Не коммитить `majestic.env`, `.venv/`, `dist/`, `build/`
 - SideForge и связанные пути не восстанавливать
 
