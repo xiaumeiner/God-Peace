@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-16"?>
+<ArrayOfProfile>
+  <Profile>
+    <ProfileName>Base profile</ProfileName>
+    <Executeables />
+    <Settings>
+      <ProfileSetting>
+        <SettingNameInfo>Low Latency Mode</SettingNameInfo>
+        <SettingID>0x80857A28</SettingID>
+        <SettingValue>0x00000002</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Maximum pre-rendered frames</SettingNameInfo>
+        <SettingID>0x20C1221E</SettingID>
+        <SettingValue>0x00000001</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Power management mode</SettingNameInfo>
+        <SettingID>0x1057EB71</SettingID>
+        <SettingValue>0x00000001</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Frame Rate Limiter Mode</SettingNameInfo>
+        <SettingID>0x00005F5F9DFEF7DA</SettingID>
+        <SettingValue>0x00000002</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Frame Rate Limiter</SettingNameInfo>
+        <SettingID>0x00005F5F9DFEF7C3</SettingID>
+        <SettingValue>0x00000000</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Vertical Sync</SettingNameInfo>
+        <SettingID>0x00A879CF</SettingID>
+        <SettingValue>0x47814940</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Shadercache - Cachesize</SettingNameInfo>
+        <SettingID>0x00F3E374</SettingID>
+        <SettingValue>0x00000001</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Texture filtering - Quality</SettingNameInfo>
+        <SettingID>0x00CE2691</SettingID>
+        <SettingValue>0x00000000</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Threaded optimization</SettingNameInfo>
+        <SettingID>0x20C12289</SettingID>
+        <SettingValue>0x00000001</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Enable Ansel</SettingNameInfo>
+        <SettingID>0x1034CB89</SettingID>
+        <SettingValue>0x00000000</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>CUDA - Force P2 State</SettingNameInfo>
+        <SettingID>0x0F4DDC94</SettingID>
+        <SettingValue>0x00000000</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+      <ProfileSetting>
+        <SettingNameInfo>Preferred refresh rate</SettingNameInfo>
+        <SettingID>0x50166C5E</SettingID>
+        <SettingValue>0x00000001</SettingValue>
+        <ValueType>Dword</ValueType>
+      </ProfileSetting>
+    </Settings>
+  </Profile>
+</ArrayOfProfile>

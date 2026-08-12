@@ -1,0 +1,10 @@
+bundled/installers/*.exe
+majestic.env
+capt_watch_state.json
+god_peace_state.json
+build/
+dist/
+__pycache__/
+*.pyc
+*.pyo
+*.log
