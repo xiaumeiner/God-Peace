@@ -17,7 +17,7 @@ from typing import Any
 from config import APP_NAME, APP_VERSION, HUB_DIR
 
 GITHUB_OWNER = "xiaumeiner"
-GITHUB_REPO = "GodPeace"
+GITHUB_REPO = "God-Peace"
 RELEASES_URL = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
 RELEASE_BROWSER_URL = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
 HEADERS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
